@@ -5,6 +5,7 @@ import (
 	"github.com/gosnmp/gosnmp"
 	"github.com/hexqueller/SNMP-proxy/internal/config"
 	"log"
+	"net"
 	"time"
 )
 
@@ -21,7 +22,12 @@ func PollAgent(agent config.AgentConfig) {
 	if err != nil {
 		log.Fatalf("Connect() err: %v", err)
 	}
-	defer params.Conn.Close()
+	defer func(Conn net.Conn) {
+		err := Conn.Close()
+		if err != nil {
+			log.Fatalf("Close() err: %v", err)
+		}
+	}(params.Conn)
 
 	result, err := params.Get([]string{agent.OID})
 	if err != nil {
