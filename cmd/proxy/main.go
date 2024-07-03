@@ -26,5 +26,7 @@ func main() {
 	}
 
 	// Ожидание, чтобы все агенты успели ответить
+	log.Printf("Waiting for %d seconds\n", *timeout)
 	time.Sleep(time.Duration(*timeout) * time.Second)
+	log.Println("Finished waiting")
 }

@@ -2,11 +2,12 @@ package snmp
 
 import (
 	"fmt"
-	"github.com/gosnmp/gosnmp"
-	"github.com/hexqueller/SNMP-proxy/internal/config"
 	"log"
 	"net"
 	"time"
+
+	"github.com/gosnmp/gosnmp"
+	"github.com/hexqueller/SNMP-proxy/internal/config"
 )
 
 func PollAgent(agent config.AgentConfig) {
@@ -15,7 +16,8 @@ func PollAgent(agent config.AgentConfig) {
 		Port:      agent.Port,
 		Community: agent.Community,
 		Version:   gosnmp.SnmpVersion(agent.Version),
-		Timeout:   time.Duration(2) * time.Second,
+		Timeout:   time.Duration(5) * time.Second, // Увеличиваем тайм-аут
+		Retries:   3,                              // Добавляем повторные попытки
 	}
 
 	err := params.Connect()
