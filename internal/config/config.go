@@ -2,14 +2,14 @@ package config
 
 import (
 	"gopkg.in/yaml.v2"
-	"os"
+	"io/ioutil"
 )
 
 type AgentConfig struct {
 	Target    string `yaml:"target"`
 	Port      uint16 `yaml:"port"`
 	Community string `yaml:"community"`
-	Version   int    `yaml:"version"`
+	Version   string `yaml:"version"` // Изменено на строку
 	OID       string `yaml:"oid"`
 }
 
@@ -18,7 +18,7 @@ type Config struct {
 }
 
 func LoadConfig(path string) (*Config, error) {
-	data, err := os.ReadFile(path)
+	data, err := ioutil.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
