@@ -4,3 +4,5 @@ agents:
     community: "public"
     version: "2c"
     oid: "1.3.6.1"
+    dataPort: 16100 # Порт для отдачи данных
+    interval: 30   # Интервал в секундах

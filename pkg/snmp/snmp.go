@@ -1,15 +1,20 @@
 package snmp
 
 import (
-	"fmt"
 	"log"
+	"net"
 	"time"
 
 	"github.com/gosnmp/gosnmp"
 	"github.com/hexqueller/SNMP-proxy/internal/config"
 )
 
-func PollAgent(agent config.AgentConfig) {
+type Data struct {
+	Timestamp time.Time
+	Data      map[string]interface{}
+}
+
+func PollAgent(agent config.AgentConfig, dataChannel chan<- Data) {
 	log.Printf("Polling agent: %s\n", agent.Target)
 
 	var version gosnmp.SnmpVersion
@@ -28,8 +33,8 @@ func PollAgent(agent config.AgentConfig) {
 		Target:    agent.Target,
 		Port:      agent.Port,
 		Community: agent.Community,
-		Version:   version,                         // Используем интерпретированную версию
-		Timeout:   time.Duration(10) * time.Second, // Увеличиваем тайм-аут
+		Version:   version,
+		Timeout:   time.Duration(10) * time.Second,
 		Retries:   3,
 	}
 
@@ -37,25 +42,36 @@ func PollAgent(agent config.AgentConfig) {
 	if err != nil {
 		log.Fatalf("Connect() err: %v", err)
 	}
-	defer params.Conn.Close()
-
-	log.Println("Connected successfully to agent:", agent.Target)
-
-	log.Println("Starting SNMP walk")
-	err = params.Walk(agent.OID, func(pdu gosnmp.SnmpPDU) error {
-		log.Printf("Received PDU: %v", pdu) // Логирование PDU для отладки
-		switch pdu.Type {
-		case gosnmp.OctetString:
-			fmt.Printf("Agent %s: %s: %s\n", agent.Target, pdu.Name, string(pdu.Value.([]byte)))
-		default:
-			fmt.Printf("Agent %s: %s: %v\n", agent.Target, pdu.Name, pdu.Value)
+	defer func(Conn net.Conn) {
+		err := Conn.Close()
+		if err != nil {
+			log.Fatalf("Close() err: %v", err)
 		}
-		return nil
-	})
+	}(params.Conn)
 
-	if err != nil {
-		log.Fatalf("Walk() err: %v", err)
+	for {
+		log.Println("Starting SNMP walk")
+		data := make(map[string]interface{})
+		err = params.Walk(agent.OID, func(pdu gosnmp.SnmpPDU) error {
+			log.Printf("Received PDU: %v", pdu)
+			switch pdu.Type {
+			case gosnmp.OctetString:
+				data[pdu.Name] = string(pdu.Value.([]byte))
+			default:
+				data[pdu.Name] = pdu.Value
+			}
+			return nil
+		})
+
+		if err != nil {
+			log.Printf("Walk() err: %v", err)
+		} else {
+			dataChannel <- Data{
+				Timestamp: time.Now(),
+				Data:      data,
+			}
+		}
+
+		time.Sleep(time.Duration(agent.Interval) * time.Second)
 	}
-
-	log.Println("Completed SNMP walk for agent:", agent.Target)
 }
