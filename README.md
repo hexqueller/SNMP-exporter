@@ -5,5 +5,5 @@ make build
 ```
 
 ```bash
-./proxy -c /path/to/config/.yaml
+./proxy -t 10 -c /path/to/config/.yaml
 ```

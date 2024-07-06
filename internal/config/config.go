@@ -6,13 +6,12 @@ import (
 )
 
 type AgentConfig struct {
+	Name      string `yaml:"name"`
 	Target    string `yaml:"target"`
 	Port      uint16 `yaml:"port"`
 	Community string `yaml:"community"`
 	Version   string `yaml:"version"`
 	OID       string `yaml:"oid"`
-	DataPort  uint16 `yaml:"dataPort"` // Порт для отдачи данных
-	Interval  int    `yaml:"interval"` // Интервал в секундах
 }
 
 type Config struct {

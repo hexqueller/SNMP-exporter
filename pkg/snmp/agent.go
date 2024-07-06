@@ -1,81 +1,120 @@
 package snmp
 
 import (
+	"encoding/json"
+	"fmt"
 	"log"
 	"net"
-	"strconv"
+	"os"
+	"sync"
+	"time"
 
 	"github.com/gosnmp/gosnmp"
 	"github.com/hexqueller/SNMP-proxy/internal/config"
 )
 
-var collectedData map[string]Data
+type Data struct {
+	Target string
+	Data   map[string]string
+}
+
+var (
+	collectedData   map[string]Data
+	collectedDataMu sync.Mutex
+)
 
 func init() {
 	collectedData = make(map[string]Data)
 }
 
-func StartSNMPAgent(agent config.AgentConfig, dataChannel <-chan Data) {
-	go func() {
-		for data := range dataChannel {
-			collectedData[agent.Target] = data
-		}
-	}()
+func PollAgent(agent config.AgentConfig, wg *sync.WaitGroup) {
+	defer wg.Done()
+	log.Printf("Polling agent: %s\n", agent.Target)
 
-	listener, err := net.Listen("udp", ":"+strconv.Itoa(int(agent.DataPort)))
+	version, err := getSNMPVersion(agent.Version)
 	if err != nil {
-		log.Fatalf("Failed to start SNMP agent: %v", err)
+		log.Fatalf("Invalid SNMP version: %v", err)
 	}
-	defer listener.Close()
 
-	log.Printf("SNMP agent started on port %d\n", agent.DataPort)
+	params := &gosnmp.GoSNMP{
+		Target:    agent.Target,
+		Port:      agent.Port,
+		Community: agent.Community,
+		Version:   version,
+		Timeout:   time.Duration(5) * time.Second,
+		Retries:   3,
+	}
 
-	for {
-		buffer := make([]byte, 4096)
-		n, addr, err := listener.ReadFrom(buffer)
+	err = params.Connect()
+	if err != nil {
+		log.Fatalf("Connect() err: %v", err)
+	}
+	defer func(Conn net.Conn) {
+		err := Conn.Close()
 		if err != nil {
-			log.Printf("Failed to read from connection: %v", err)
-			continue
+			log.Fatalf("Close err: %v", err)
 		}
+	}(params.Conn)
 
-		go handleRequest(buffer[:n], addr, listener)
+	log.Println("Connected successfully to agent:", agent.Target)
+
+	result := make(map[string]string)
+	err = params.Walk(agent.OID, func(pdu gosnmp.SnmpPDU) error {
+		switch pdu.Type {
+		case gosnmp.OctetString:
+			result[pdu.Name] = string(pdu.Value.([]byte))
+		default:
+			result[pdu.Name] = fmt.Sprintf("%v", pdu.Value)
+		}
+		return nil
+	})
+
+	if err != nil {
+		log.Fatalf("Walk() err: %v", err)
+	}
+
+	collectedDataMu.Lock()
+	collectedData[agent.Name] = Data{Target: agent.Target, Data: result}
+	collectedDataMu.Unlock()
+
+	log.Println("Completed SNMP walk for agent:", agent.Target)
+}
+
+func SaveDataToFiles() {
+	collectedDataMu.Lock()
+	defer collectedDataMu.Unlock()
+
+	for name, data := range collectedData {
+		filename := fmt.Sprintf("%s_snmp_data.json", name)
+		file, err := os.Create(filename)
+		if err != nil {
+			log.Fatalf("Failed to create file: %v", err)
+		}
+		defer func(file *os.File) {
+			err := file.Close()
+			if err != nil {
+				log.Fatalf("Failed to close file: %v", err)
+			}
+		}(file)
+
+		encoder := json.NewEncoder(file)
+		encoder.SetIndent("", "  ")
+		if err := encoder.Encode(data); err != nil {
+			log.Fatalf("Failed to write data to file: %v", err)
+		}
+		log.Println("Data saved to file:", filename)
 	}
 }
 
-func handleRequest(request []byte, addr net.Addr, listener net.Listener) {
-	packet := &gosnmp.SnmpPacket{}
-	err := packet.Unmarshal(request)
-	if err != nil {
-		log.Printf("Failed to unmarshal SNMP packet: %v", err)
-		return
-	}
-
-	response := &gosnmp.SnmpPacket{
-		Version:   packet.Version,
-		Community: packet.Community,
-		PDUType:   gosnmp.GetResponse,
-		Variables: []gosnmp.SnmpPDU{},
-	}
-
-	target := addr.String()
-	if data, exists := collectedData[target]; exists {
-		for oid, value := range data.Data {
-			response.Variables = append(response.Variables, gosnmp.SnmpPDU{
-				Name:  oid,
-				Type:  gosnmp.OctetString,
-				Value: value,
-			})
-		}
-	}
-
-	responseBytes, err := response.Marshal()
-	if err != nil {
-		log.Printf("Failed to marshal SNMP response: %v", err)
-		return
-	}
-
-	_, err = listener.WriteTo(responseBytes, addr)
-	if err != nil {
-		log.Printf("Failed to write SNMP response: %v", err)
+func getSNMPVersion(version string) (gosnmp.SnmpVersion, error) {
+	switch version {
+	case "1":
+		return gosnmp.Version1, nil
+	case "2c":
+		return gosnmp.Version2c, nil
+	case "3":
+		return gosnmp.Version3, nil
+	default:
+		return 0, fmt.Errorf("unsupported SNMP version: %s", version)
 	}
 }

@@ -10,31 +10,22 @@ import (
 
 func main() {
 	// Определение флагов
-	configPath := flag.String("c", "./configs/default.yaml", "Path to config file")
+	configPath := flag.String("c", "./configs/default.yaml", "Path to loadConfig file")
 	flag.Parse()
 
 	// Чтение конфигурационного файла
-	cfg, err := config.LoadConfig(*configPath)
+	loadConfig, err := config.LoadConfig(*configPath)
 	if err != nil {
-		log.Fatalf("Failed to load config file: %v", err)
+		log.Fatalf("Failed to load loadConfig: %v", err)
 	}
-	log.Println("Configuration loaded successfully")
 
 	var wg sync.WaitGroup
-	for _, agent := range cfg.Agents {
-		dataChannel := make(chan snmp.Data)
+	for _, agent := range loadConfig.Agents {
 		wg.Add(1)
-		go func(agent config.AgentConfig) {
-			defer wg.Done()
-			snmp.StartSNMPAgent(agent, dataChannel)
-		}(agent)
-
-		wg.Add(1)
-		go func(agent config.AgentConfig) {
-			defer wg.Done()
-			snmp.PollAgent(agent, dataChannel)
-		}(agent)
+		go snmp.PollAgent(agent, &wg)
 	}
 
 	wg.Wait()
+	snmp.SaveDataToFiles()
+	log.Println("Finished waiting")
 }
