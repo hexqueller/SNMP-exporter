@@ -6,5 +6,5 @@ build:
 run: build
 	./proxy
 
-docker:
-	docker build . -t snmp-proxy && docker run -p 161:161 snmp-proxy
+docker: build
+	docker build . -t snmp-proxy && docker run --privileged --network=host snmp-proxy
