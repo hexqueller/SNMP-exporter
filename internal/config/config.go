@@ -1,8 +1,9 @@
 package config
 
 import (
-	"gopkg.in/yaml.v2"
 	"os"
+
+	"gopkg.in/yaml.v2"
 )
 
 type AgentConfig struct {
@@ -12,6 +13,7 @@ type AgentConfig struct {
 	Community string `yaml:"community"`
 	Version   string `yaml:"version"`
 	OID       string `yaml:"oid"`
+	DataPort  uint16 `yaml:"data_port"`
 }
 
 type Config struct {
