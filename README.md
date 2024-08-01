@@ -1,4 +1,4 @@
-# SNMP proxy
+# SNMP exporter
 
 ```bash
 make build
